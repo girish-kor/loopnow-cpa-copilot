@@ -1,0 +1,34 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cpa
+          POSTGRES_PASSWORD: cpa
+          POSTGRES_DB: cpa
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cpa" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://cpa:cpa@localhost:5432/cpa
+      MODEL_PROVIDER: openai
+      MODEL_NAME: gpt-4o-mini
+      MODEL_API_KEY: test-key
+      CRA_RULESET_VERSION: 2026.09.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run db:migrate
+      - run: npm run db:seed
+      - run: npm run eval
+      - run: npm run build
+      - run: docker build -t loopnow-cpa .

@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cpa
+      POSTGRES_PASSWORD: cpa
+      POSTGRES_DB: cpa
+    ports: ['5432:5432']
+    volumes: ['pgdata:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cpa -d cpa']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ['6379:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build: .
+    command: sh -c "npm run db:migrate && npm run db:seed"
+    environment:
+      DATABASE_URL: postgres://cpa:cpa@db:5432/cpa
+    depends_on:
+      db: { condition: service_healthy }
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgres://cpa:cpa@db:5432/cpa
+      REDIS_URL: redis://redis:6379
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
+      MODEL_NAME: ${MODEL_NAME:-gpt-4o-mini}
+      MODEL_API_KEY: ${MODEL_API_KEY}
+      CRA_RULESET_VERSION: ${CRA_RULESET_VERSION:-2026.09.1}
+      API_KEY: ${API_KEY:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    ports: ['3000:3000']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+volumes:
+  pgdata:

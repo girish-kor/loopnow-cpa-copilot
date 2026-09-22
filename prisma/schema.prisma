@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Receipt {
+  id                      String   @id @default(uuid()) @db.Uuid
+  externalId              String   @unique @map("external_id")
+  vendor                  String?
+  receiptDate             String?  @map("receipt_date")
+  subtotal                Decimal  @db.Decimal(14, 2)
+  taxAmount               Decimal  @map("tax_amount") @db.Decimal(14, 2)
+  total                   Decimal  @db.Decimal(14, 2)
+  taxType                 String   @default("GST") @map("tax_type")
+  gstHstNumber            String?  @map("gst_hst_number")
+  category                String   @default("unknown")
+  receiptAvailable        Boolean  @default(true) @map("receipt_available")
+  commercialUsePercentage Decimal  @default(100.00) @map("commercial_use_percentage") @db.Decimal(5, 2)
+  rawText                 String?  @map("raw_text")
+  status                  String   @default("pending")
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  expenses    Expense[]
+  agentRuns   AgentRun[]
+  toolCalls   ToolCall[]
+  auditEvents AuditEvent[]
+  approvals   Approval[]
+
+  @@map("receipts")
+}
+
+model Expense {
+  id                    String   @id @default(uuid()) @db.Uuid
+  receiptId             String   @map("receipt_id") @db.Uuid
+  category              String
+  gifiCode              String?  @map("gifi_code")
+  grossTax              Decimal  @map("gross_tax") @db.Decimal(14, 2)
+  eligibilityPercentage Decimal  @map("eligibility_percentage") @db.Decimal(5, 4)
+  eligibleItc           Decimal  @map("eligible_itc") @db.Decimal(14, 2)
+  reasonCode            String   @map("reason_code")
+  status                String
+  ruleVersion           String   @map("rule_version")
+  idempotencyKey        String   @unique @map("idempotency_key")
+  updatedAt             DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  @@map("expenses")
+}
+
+model GifiCode {
+  code                   String  @id
+  description            String
+  category               String
+  parentCategory         String  @map("parent_category")
+  applicableExpenseTypes Json
+  confidence             Decimal @db.Decimal(4, 2)
+  source                 String
+
+  @@map("gifi_codes")
+}
+
+model ComplianceRule {
+  id          String    @id
+  ruleVersion String    @map("rule_version")
+  authority   String
+  title       String
+  url         String
+  retrievedAt DateTime? @map("retrieved_at") @db.Timestamptz(6)
+  rulePayload Json      @map("rule_payload")
+
+  @@map("compliance_rules")
+}
+
+model AgentRun {
+  id             String   @id @default(uuid()) @db.Uuid
+  receiptId      String?  @map("receipt_id") @db.Uuid
+  model          String
+  provider       String
+  ttftMs         Int?     @map("ttft_ms")
+  totalLatencyMs Int?     @map("total_latency_ms")
+  inputTokens    Int?     @map("input_tokens")
+  outputTokens   Int?     @map("output_tokens")
+  finalStatus    String   @default("running") @map("final_status")
+  startedAt      DateTime @default(now()) @map("started_at") @db.Timestamptz(6)
+
+  receipt   Receipt?   @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+  toolCalls ToolCall[]
+
+  @@map("agent_runs")
+}
+
+model ToolCall {
+  id         String   @id @default(uuid()) @db.Uuid
+  agentRunId String?  @map("agent_run_id") @db.Uuid
+  receiptId  String?  @map("receipt_id") @db.Uuid
+  toolName   String   @map("tool_name")
+  input      Json
+  result     Json?
+  status     String
+  latencyMs  Int?     @map("latency_ms")
+  errorCode  String?  @map("error_code")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  agentRun AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  receipt  Receipt?  @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+
+  @@map("tool_calls")
+}
+
+model AuditEvent {
+  eventId     String   @id @default(uuid()) @db.Uuid
+  timestamp   DateTime @default(now()) @db.Timestamptz(6)
+  actor       String
+  receiptId   String?  @map("receipt_id") @db.Uuid
+  action      String
+  inputHash   String   @map("input_hash")
+  resultHash  String   @map("result_hash")
+  ruleVersion String   @map("rule_version")
+  model       String?
+  status      String
+
+  receipt Receipt? @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+
+  @@map("audit_events")
+}
+
+model Approval {
+  id        String   @id @default(uuid()) @db.Uuid
+  receiptId String   @map("receipt_id") @db.Uuid
+  action    String
+  actor     String
+  decision  String
+  comment   String?
+  decidedAt DateTime @default(now()) @map("decided_at") @db.Timestamptz(6)
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  @@map("approvals")
+}
